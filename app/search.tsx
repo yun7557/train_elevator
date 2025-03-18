@@ -48,9 +48,9 @@ export default function SearchScreen() {
       return;
     }
     try {
-      const radius = 200; // 검색 반경 설정 (1000km)
+      const radius = 200; // 검색 반경 설정 (200km)
       const response = await fetch(
-        `http://222.112.27.120:3002/elepoi/nearby?x=${location.longitude}&y=${location.latitude}&radius=${radius}`
+        `https://elevator-search-hyj-88013499747.asia-northeast2.run.app/elepoi/nearby?x=${location.longitude}&y=${location.latitude}&radius=${radius}`
         // `http://127.0.0.1:3002/elepoi/nearby?x=126.8817008&y=37.4803024&radius=${radius}`
       );
       const data: Elevator[] = await response.json();
