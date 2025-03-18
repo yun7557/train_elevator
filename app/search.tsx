@@ -4,10 +4,13 @@ import { StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from "rea
 import MapView, { Marker } from "react-native-maps";
 
 interface Elevator {
+ 
   id: number;
-  ele_geom: "point";
-  // DB에서 내려온 좌표가 [경도, 위도] 순서로 구성된다고 가정합니다.
-  coordinates: number[]; 
+  geom: {
+    type: string;
+    coordinates: number[];
+  };
+  coordinates: number[]; // Add this property to match the usage in the code
 }
 
 export default function SearchScreen() {
@@ -17,11 +20,14 @@ export default function SearchScreen() {
   const [elevators, setElevators] = useState<Elevator[]>([]);
 
   useEffect(() => {
+    setLoading(true);
     getUserLocation();
   }, []);
 
+  // location 업데이트 시 단 한 번만 fetchElevators() 호출
   useEffect(() => {
     if (location) {
+      console.log("Location Updated:", location);
       fetchElevators();
     }
   }, [location]);
@@ -37,46 +43,53 @@ export default function SearchScreen() {
     let currentLocation = await Location.getCurrentPositionAsync({});
     setLocation(currentLocation.coords);
     setLoading(false);
-    // 위치를 얻은 후 엘리베이터 데이터 fetch 
-
   };
 
-  // 엘리베이터 데이터를 API(DB)에서 받아오는 함수 
+  // 엘리베이터 데이터를 API에서 받아오는 함수 
   const fetchElevators = async () => {
-    if (!location) {
+    if (!location || location.latitude === undefined || location.longitude === undefined) {
       alert("위치 정보를 먼저 가져와야 합니다!");
       return;
     }
+  
+    setLoading(true);
+    console.log("Fetching elevators from API...");
+  
     try {
-      const radius = 200; // 검색 반경 설정 (200km)
       const response = await fetch(
-        `https://elevator-search-hyj-88013499747.asia-northeast2.run.app/elepoi/nearby?x=${location.longitude}&y=${location.latitude}&radius=${radius}`
-        // `http://127.0.0.1:3002/elepoi/nearby?x=126.8817008&y=37.4803024&radius=${radius}`
+        `https://elevator-search-hyj-88013499747.asia-northeast2.run.app/elepoi/nearby?x=${location.longitude}&y=${location.latitude}&radius=200`
       );
-      const data: Elevator[] = await response.json();
-      setElevators(data);
+  
+      console.log("API Response Status:", response.status);
+  
+      if (!response.ok) {
+        throw new Error(`API 요청 실패: ${response.status}`);
+      }
+  
+      const data = await response.json();
+      console.log("Fetched Elevators Data:", data);
+  
+      if (!data || !Array.isArray(data)) {
+        throw new Error("API 응답 형식 오류");
+      }
+  
+      // geom.coordinates에서 필요한 좌표만 추출해서 coordinates 필드를 생성
+      const formattedData = data.map((elevator: any) => ({
+        id: elevator.id,
+        geom: elevator.geom?.type || "point",
+        coordinates: elevator.geom?.coordinates || [0, 0],
+      }));
+  
+      console.log("Formatted Elevators Data:", formattedData);
+      setElevators(formattedData);
     } catch (error) {
-      console.error('API 호출 오류:', error);
-      alert('위치 정보를 불러오는 중 오류가 발생했습니다.');
+      console.error("API 호출 오류:", error);
+      alert("위치 정보를 불러오는 중 오류가 발생했습니다.");
+    } finally {
+      setLoading(false);
     }
-    // 실제 API 호출로 대체
-    // const dummyElevators: Elevator[] = [
-    //   {
-    //     ele_id: 1,
-    //     ele_geom: "point",
-    //     // DB 좌표가 [경도, 위도] 순서라 가정. 사용자 위치에서 약간의 오프셋 추가
-    //     coordinates: [coords.longitude + 0.001, coords.latitude + 0.001],
-    //   },
-    //   {
-    //     ele_id: 2,
-    //     ele_geom: "point",
-    //     coordinates: [coords.longitude - 0.001, coords.latitude - 0.001],
-    //   },
-    // ];
-    // setElevators(dummyElevators);
   };
-
-
+  
   const handleButtonPress = () => {
     fetchElevators();
   };
@@ -105,25 +118,27 @@ export default function SearchScreen() {
             }}
             showsUserLocation={true}
           >
-            {/* 내 위치 마커 */}
             <Marker
               coordinate={{ latitude: location.latitude, longitude: location.longitude }}
               title="내 위치"
               description="현재 내 위치"
             />
-            {/* DB에서 받아온 엘리베이터 마커 */}
-            {elevators.map((elevator) => (
-              <Marker
-                key={`elevator-${elevator.id}`}
-                coordinate={{
-                  latitude: elevator.coordinates[1], // 위도
-                  longitude: elevator.coordinates[0], // 경도
-                }}
-                title={`엘리베이터 ${elevator.id}`}
-                description="DB에서 가져온 엘리베이터 위치"
-              />
-            ))}
-
+            {elevators.map((elevator) =>
+              elevator.geom.coordinates &&
+              elevator.geom.coordinates.length === 2 &&
+              isFinite(elevator.geom.coordinates[0]) &&
+              isFinite(elevator.geom.coordinates[1]) ? (
+                <Marker
+                  key={`elevator-${elevator.id}`}
+                  coordinate={{
+                    latitude: elevator.coordinates[1],
+                    longitude: elevator.coordinates[0],
+                  }}
+                  title={`엘리베이터 ${elevator.id}`}
+                  description="DB에서 가져온 엘리베이터 위치"
+                />
+              ) : null
+            )}
           </MapView>
         ) : (
           <View style={styles.loadingContainer}>
@@ -132,7 +147,7 @@ export default function SearchScreen() {
         )}
         <TouchableOpacity style={styles.button} onPress={handleButtonPress}>
           <Text style={styles.buttonText}>
-            내 주변 가까운{'\n'}엘리베이터 찾기
+            내 주변 가까운{"\n"}엘리베이터 찾기
           </Text>
         </TouchableOpacity>
       </View>
